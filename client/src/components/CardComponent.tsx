@@ -7,6 +7,7 @@ interface Props {
   small?: boolean;
   faceDown?: boolean;
   groupLabel?: string;
+  isDrawnCard?: boolean;
 }
 
 const SUIT_SYMBOLS: Record<string, string> = {
@@ -18,7 +19,7 @@ const SUIT_SYMBOLS: Record<string, string> = {
 
 const RED_SUITS = new Set(['H', 'D']);
 
-export default function CardComponent({ card, selected, onClick, small, faceDown, groupLabel }: Props) {
+export default function CardComponent({ card, selected, onClick, small, faceDown, groupLabel, isDrawnCard }: Props) {
   if (faceDown) {
     return (
       <div
@@ -46,8 +47,8 @@ export default function CardComponent({ card, selected, onClick, small, faceDown
         rounded-lg bg-white border-2 shadow-md
         flex flex-col justify-between p-1
         select-none cursor-pointer transition-transform relative
-        ${selected ? 'border-yellow-400 -translate-y-3 shadow-yellow-400/50' : 'border-gray-200 hover:-translate-y-1'}
-        ${card.isJoker ? 'border-purple-400' : ''}
+        ${selected ? 'border-yellow-400 -translate-y-3 shadow-yellow-400/50' : isDrawnCard ? 'border-cyan-400 shadow-cyan-400/50 -translate-y-2' : 'border-gray-200 hover:-translate-y-1'}
+        ${card.isJoker && !selected && !isDrawnCard ? 'border-purple-400' : ''}
       `}
     >
       {groupLabel && (

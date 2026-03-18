@@ -8,9 +8,10 @@ interface Props {
   selected?: boolean;
   onClick?: () => void;
   groupLabel?: string;
+  isDrawnCard?: boolean;
 }
 
-export default function SortableCard({ card, selected, onClick, groupLabel }: Props) {
+export default function SortableCard({ card, selected, onClick, groupLabel, isDrawnCard }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: card.id });
 
@@ -23,7 +24,7 @@ export default function SortableCard({ card, selected, onClick, groupLabel }: Pr
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <CardComponent card={card} selected={selected} onClick={onClick} groupLabel={groupLabel} />
+      <CardComponent card={card} selected={selected} onClick={onClick} groupLabel={groupLabel} isDrawnCard={isDrawnCard} />
     </div>
   );
 }

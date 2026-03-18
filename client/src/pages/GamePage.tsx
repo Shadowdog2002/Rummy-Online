@@ -26,7 +26,7 @@ export default function GamePage() {
   const navigate = useNavigate();
   const {
     gameState, setGameState, updateClock,
-    selectedCards, toggleCardSelection,
+    selectedCards, toggleCardSelection, clearSelection,
     groups, showError, setShowError,
     gameOverInfo, setGameOver,
     resetGame,
@@ -153,6 +153,7 @@ export default function GamePage() {
   function discard(cardId: string) {
     if (!discardMode) return;
     socket.emit('game:discard', { roomId, cardId });
+    clearSelection();
   }
 
   function show() {
@@ -296,6 +297,7 @@ export default function GamePage() {
                   selected={selectedCards.includes(card.id)}
                   onClick={() => toggleCardSelection(card.id)}
                   groupLabel={cardGroupName.get(card.id)}
+                  isDrawnCard={drawnCard?.id === card.id}
                 />
               ))}
             </div>
