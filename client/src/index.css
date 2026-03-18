@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-felt-dark text-white min-h-screen;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
