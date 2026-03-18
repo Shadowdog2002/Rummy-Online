@@ -1,5 +1,11 @@
 # Rummy Online
 
+# next updates v0.1
+## when I pickup a card, highlight it
+## there is a bug where when I select a card, discard is disabled; but when I deselect that card, discard is enabled (and this is when no other card is selected)
+## Allow players to show at any point on their turn regardless of groups done. when you show, both players should see your cards and their groups in the same page; At that point you can order your cards into groups for final validation. Add a button for final validation and display to both players any mistakes in the groups. If no mistakes declare the winner. then allow players to view this game state until they are satisfied; so you should put a button on that same page to close the game and return to lobby
+## ask me any clarifiying questions if you are unsure of my specifications
+
 A real-time 2-player Indian Rummy game playable over a local network (LAN). Built with React, Node.js, and Socket.io.
 
 ---
