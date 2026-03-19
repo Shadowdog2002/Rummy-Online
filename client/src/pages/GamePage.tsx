@@ -20,6 +20,7 @@ import CardComponent from '../components/CardComponent';
 import ChessClock from '../components/ChessClock';
 import GroupPanel from '../components/GroupPanel';
 import SortableCard from '../components/SortableCard';
+import ShowScreen from '../components/ShowScreen';
 
 export default function GamePage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -29,6 +30,7 @@ export default function GamePage() {
     selectedCards, toggleCardSelection, clearSelection,
     groups, showError, setShowError,
     gameOverInfo, setGameOver,
+    showState, setShowState,
     resetGame,
   } = useGameStore();
 
@@ -69,9 +71,8 @@ export default function GamePage() {
       updateClock(data.players, data.currentTurn);
     });
 
-    socket.on('game:showRejected', ({ error }: { error: string }) => {
-      setShowError(error);
-      setTimeout(() => setShowError(null), 4000);
+    socket.on('game:showState', (state) => {
+      setShowState(state);
     });
 
     socket.on('game:over', (info: { winner: string; winnerUsername: string; reason?: string }) => {
@@ -85,7 +86,7 @@ export default function GamePage() {
     return () => {
       socket.off('game:state');
       socket.off('game:clock');
-      socket.off('game:showRejected');
+      socket.off('game:showState');
       socket.off('game:over');
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,16 +124,10 @@ export default function GamePage() {
     if (g.name) g.cards.forEach(c => cardGroupName.set(c.id, g.name!));
   });
 
-  // Cards currently in any group (target is always 13)
-  const groupedCardIds = new Set(groups.flatMap(g => g.cards.map(c => c.id)));
-  const groupedCount = groupedCardIds.size;
-
-  // After drawing, hand has 14 cards. Need exactly 13 grouped to show (14th is discarded).
-  // Before drawing, hand has 13 cards. Need all 13 grouped.
-  const needGrouped = 13;
-  const canShow = isMyTurn && !!drawnCard && groupedCount >= needGrouped;
+  const canShow = isMyTurn && !!drawnCard;
 
   // Discard requires exactly 1 selected, ungrouped card, and a drawn card
+  const groupedCardIds = new Set(groups.flatMap(g => g.cards.map(c => c.id)));
   const discardMode = isMyTurn && !!drawnCard;
   const ungroupedSelected = selectedCards.filter(id => !groupedCardIds.has(id));
   const canDiscard = discardMode && ungroupedSelected.length === 1;
@@ -140,7 +135,6 @@ export default function GamePage() {
   function getShowBlockedReason(): string {
     if (!isMyTurn) return `It's ${opponentPlayer.username}'s turn`;
     if (!drawnCard) return 'Draw a card first, then show';
-    if (groupedCount < needGrouped) return `Group 13 cards first (${groupedCount}/13 grouped)`;
     return '';
   }
   const showBlockedReason = getShowBlockedReason();
@@ -159,7 +153,7 @@ export default function GamePage() {
   function show() {
     if (!canShow) return;
     setShowError(null);
-    socket.emit('game:show', { roomId, groups });
+    socket.emit('game:startShow', { roomId, groups });
   }
 
   function leaveGame() {
@@ -171,6 +165,17 @@ export default function GamePage() {
   }
 
   const selectedCardObjects = orderedHand.filter(c => selectedCards.includes(c.id));
+
+  if (showState) {
+    return (
+      <ShowScreen
+        showState={showState}
+        mySocketId={socket.id ?? ''}
+        roomId={roomId}
+        onLeave={leaveGame}
+      />
+    );
+  }
 
   if (gameOverInfo) {
     const iWon = gameOverInfo.winner === socket.id;

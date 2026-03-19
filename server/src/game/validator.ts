@@ -1,24 +1,11 @@
 /**
  * Hand validation for Indian Rummy.
- *
- * Rules:
- * - A hand of 13 cards wins when ALL cards are in valid groups.
- * - Must have at least one "life" (pure sequence).
- * - Must have at least one "second life" (impure sequence, jokers allowed) OR a second pure life.
- * - Additional groups can be "triplets" (3-4 same rank, different suits, jokers allowed).
- * - Printed jokers and wild-joker cards count as jokers everywhere.
  */
 
-import { Card, Rank } from './types';
+import { Card, Rank, Group, GroupType } from './types';
 import { RANK_ORDER } from './deck';
 
-// A group submitted by the client: tagged with its intended type
-export type GroupType = 'life' | 'secondLife' | 'triplet';
-export interface Group {
-  type: GroupType;
-  cards: Card[];
-  name?: string; // e.g. "L1", "S2", "T1"
-}
+export type { GroupType, Group };
 
 export interface ValidationResult {
   valid: boolean;
@@ -31,41 +18,55 @@ function isJoker(card: Card, wildRank: Rank | null): boolean {
   return false;
 }
 
-/** Pure sequence: ≥3 cards, same suit, consecutive ranks, NO jokers */
+/** Check if a sorted array of rank numbers is consecutive */
+function isConsecutiveRanks(ranks: number[]): boolean {
+  const sorted = [...ranks].sort((a, b) => a - b);
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i - 1] + 1) return false;
+  }
+  return true;
+}
+
+/** Pure sequence: ≥3 cards, same suit, consecutive ranks, NO jokers. A can be low (A-2-3) or high (Q-K-A). */
 function isLife(cards: Card[], wildRank: Rank | null): boolean {
   if (cards.length < 3) return false;
   if (cards.some(c => isJoker(c, wildRank))) return false;
   const suits = new Set(cards.map(c => c.suit));
   if (suits.size !== 1) return false;
-  const ranks = cards.map(c => RANK_ORDER[c.rank!]).sort((a, b) => a - b);
-  for (let i = 1; i < ranks.length; i++) {
-    if (ranks[i] !== ranks[i - 1] + 1) return false;
-  }
-  return true;
+  const ranks = cards.map(c => RANK_ORDER[c.rank!]);
+  // Try A=1 (low ace: A-2-3...)
+  if (isConsecutiveRanks(ranks)) return true;
+  // Try A=14 (high ace: Q-K-A)
+  return isConsecutiveRanks(ranks.map(r => r === 1 ? 14 : r));
 }
 
-/** Impure sequence: ≥3 cards, same suit, consecutive ranks, jokers allowed as substitutes */
+/** Impure sequence: ≥3 cards, same suit, consecutive ranks, jokers allowed as substitutes. A can be low or high. */
 function isSecondLife(cards: Card[], wildRank: Rank | null): boolean {
   if (cards.length < 3) return false;
   const naturalCards = cards.filter(c => !isJoker(c, wildRank));
   const jokerCount = cards.length - naturalCards.length;
 
-  if (jokerCount === 0) return isLife(cards, wildRank); // pure sequence qualifies too
+  if (jokerCount === 0) return isLife(cards, wildRank);
 
   const suits = new Set(naturalCards.map(c => c.suit));
   if (suits.size !== 1) return false;
 
-  const ranks = naturalCards.map(c => RANK_ORDER[c.rank!]).sort((a, b) => a - b);
+  // Try both A=1 (low) and A=14 (high, for Q-K-A)
+  for (const useHighAce of [false, true]) {
+    const ranks = naturalCards
+      .map(c => { const r = RANK_ORDER[c.rank!]; return useHighAce && r === 1 ? 14 : r; })
+      .sort((a, b) => a - b);
 
-  // Count gaps that need jokers to fill
-  let gapsNeeded = 0;
-  for (let i = 1; i < ranks.length; i++) {
-    const diff = ranks[i] - ranks[i - 1];
-    if (diff === 0) return false; // duplicate rank
-    gapsNeeded += diff - 1;
+    let gapsNeeded = 0;
+    let valid = true;
+    for (let i = 1; i < ranks.length; i++) {
+      const diff = ranks[i] - ranks[i - 1];
+      if (diff === 0) { valid = false; break; }
+      gapsNeeded += diff - 1;
+    }
+    if (valid && gapsNeeded <= jokerCount) return true;
   }
-
-  return gapsNeeded <= jokerCount;
+  return false;
 }
 
 /** Triplet: 3–4 cards of same rank, different suits, jokers allowed */
@@ -77,7 +78,7 @@ function isTriplet(cards: Card[], wildRank: Rank | null): boolean {
   if (ranks.size !== 1) return false;
 
   const suits = naturalCards.map(c => c.suit);
-  if (new Set(suits).size !== suits.length) return false; // duplicate suits
+  if (new Set(suits).size !== suits.length) return false;
 
   return true;
 }
@@ -87,10 +88,9 @@ export function validateShow(
   hand: Card[],
   wildRank: Rank | null
 ): ValidationResult {
-  // Verify all 13 cards are accounted for exactly once
   const groupCardIds = groups.flatMap(g => g.cards.map(c => c.id));
   if (groupCardIds.length !== 13) {
-    return { valid: false, error: 'All 13 cards must be grouped' };
+    return { valid: false, error: 'All 13 cards must be grouped (leave 1 card ungrouped as discard)' };
   }
   const handIds = new Set(hand.map(c => c.id));
   for (const id of groupCardIds) {
@@ -102,7 +102,6 @@ export function validateShow(
     return { valid: false, error: 'Duplicate cards in groups' };
   }
 
-  // Validate each group according to its declared type
   const lifeGroups: Group[] = [];
   const secondLifeGroups: Group[] = [];
   const tripletGroups: Group[] = [];
@@ -128,12 +127,10 @@ export function validateShow(
     }
   }
 
-  // Must have at least 1 life
   if (lifeGroups.length < 1) {
     return { valid: false, error: 'You need at least one pure sequence (life)' };
   }
 
-  // Must have at least 2 sequences total before triplets are allowed
   const totalSequences = lifeGroups.length + secondLifeGroups.length;
   if (tripletGroups.length > 0 && totalSequences < 2) {
     return {

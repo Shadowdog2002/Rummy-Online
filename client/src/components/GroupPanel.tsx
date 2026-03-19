@@ -10,6 +10,7 @@ interface Props {
   showBlockedReason: string;
   onShow: () => void;
   showError: string | null;
+  readOnly?: boolean;
 }
 
 const GROUP_LABELS: Record<GroupType, { short: string; desc: string; example: string }> = {
@@ -30,7 +31,7 @@ const GROUP_LABELS: Record<GroupType, { short: string; desc: string; example: st
   },
 };
 
-export default function GroupPanel({ selectedCards, totalCards, canShow, showBlockedReason, onShow, showError }: Props) {
+export default function GroupPanel({ selectedCards, totalCards, canShow, showBlockedReason, onShow, showError, readOnly }: Props) {
   const { groups, addGroup, removeGroup, clearSelection } = useGameStore();
   const [showHelp, setShowHelp] = useState(false);
 
@@ -127,55 +128,59 @@ export default function GroupPanel({ selectedCards, totalCards, canShow, showBlo
       )}
 
       {/* Label selected cards */}
-      {selectedCards.length >= 3 ? (
-        <div className="space-y-2 border-t border-green-800 pt-2">
-          <p className="text-xs text-green-400">
-            Label {selectedCards.length} selected cards as:
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(Object.entries(GROUP_LABELS) as [GroupType, typeof GROUP_LABELS[GroupType]][]).map(([type, val]) => (
-              <button
-                key={type}
-                onClick={() => createGroup(type)}
-                className="text-xs px-3 py-1.5 bg-green-700 hover:bg-green-600 rounded-lg leading-tight text-left"
-              >
-                <div className="font-semibold">{val.short}</div>
-                <div className="text-green-300 text-[10px]">{val.desc}</div>
-              </button>
-            ))}
+      {!readOnly && (
+        selectedCards.length >= 3 ? (
+          <div className="space-y-2 border-t border-green-800 pt-2">
+            <p className="text-xs text-green-400">
+              Label {selectedCards.length} selected cards as:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {(Object.entries(GROUP_LABELS) as [GroupType, typeof GROUP_LABELS[GroupType]][]).map(([type, val]) => (
+                <button
+                  key={type}
+                  onClick={() => createGroup(type)}
+                  className="text-xs px-3 py-1.5 bg-green-700 hover:bg-green-600 rounded-lg leading-tight text-left"
+                >
+                  <div className="font-semibold">{val.short}</div>
+                  <div className="text-green-300 text-[10px]">{val.desc}</div>
+                </button>
+              ))}
+            </div>
+            <button onClick={clearSelection} className="text-xs text-gray-500 hover:text-gray-300">
+              Clear selection
+            </button>
           </div>
-          <button onClick={clearSelection} className="text-xs text-gray-500 hover:text-gray-300">
-            Clear selection
-          </button>
-        </div>
-      ) : (
-        selectedCards.length > 0 && (
-          <p className="text-xs text-yellow-600 border-t border-green-800 pt-2">
-            Select at least 3 cards to form a group ({selectedCards.length} selected)
-          </p>
+        ) : (
+          selectedCards.length > 0 && (
+            <p className="text-xs text-yellow-600 border-t border-green-800 pt-2">
+              Select at least 3 cards to form a group ({selectedCards.length} selected)
+            </p>
+          )
         )
       )}
 
       {/* Show button — always visible */}
-      <div className="border-t border-green-800 pt-3">
-        <button
-          onClick={canShow ? onShow : undefined}
-          disabled={!canShow}
-          className={`w-full py-3 rounded-xl font-bold text-lg transition-colors ${
-            canShow
-              ? 'bg-yellow-400 hover:bg-yellow-300 text-felt-dark cursor-pointer shadow-lg'
-              : 'bg-felt-dark text-green-700 cursor-not-allowed border border-green-800'
-          }`}
-        >
-          Show!
-        </button>
-        {showError && (
-          <p className="text-red-400 text-xs mt-2 text-center">{showError}</p>
-        )}
-        {!canShow && (
-          <p className="text-green-700 text-xs mt-1.5 text-center">{showBlockedReason}</p>
-        )}
-      </div>
+      {!readOnly && (
+        <div className="border-t border-green-800 pt-3">
+          <button
+            onClick={canShow ? onShow : undefined}
+            disabled={!canShow}
+            className={`w-full py-3 rounded-xl font-bold text-lg transition-colors ${
+              canShow
+                ? 'bg-yellow-400 hover:bg-yellow-300 text-felt-dark cursor-pointer shadow-lg'
+                : 'bg-felt-dark text-green-700 cursor-not-allowed border border-green-800'
+            }`}
+          >
+            Show!
+          </button>
+          {showError && (
+            <p className="text-red-400 text-xs mt-2 text-center">{showError}</p>
+          )}
+          {!canShow && (
+            <p className="text-green-700 text-xs mt-1.5 text-center">{showBlockedReason}</p>
+          )}
+        </div>
+      )}
 
     </div>
   );

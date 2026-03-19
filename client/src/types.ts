@@ -14,7 +14,7 @@ export type GroupType = 'life' | 'secondLife' | 'triplet';
 export interface Group {
   type: GroupType;
   cards: Card[];
-  name?: string; // e.g. "L1", "S2", "T1"
+  name?: string;
 }
 
 export interface PlayerInfo {
@@ -25,7 +25,7 @@ export interface PlayerInfo {
 
 export interface GameState {
   roomId: string;
-  phase: 'waiting' | 'ready' | 'playing' | 'finished';
+  phase: 'waiting' | 'ready' | 'playing' | 'showing' | 'finished';
   myHand: Card[];
   opponentCardCount: number;
   openPile: Card[];
@@ -35,6 +35,19 @@ export interface GameState {
   wildJokerCard: Card | null;
   players: [PlayerInfo, PlayerInfo];
   winner: string | null;
+}
+
+export interface ShowState {
+  roomId: string;
+  phase: 'showing' | 'finished';
+  showingPlayerId: string;
+  showingHand: Card[];
+  showGroups: Group[];
+  showHandOrder: string[];
+  wildJokerCard: Card | null;
+  winner: string | null;
+  players: [{ id: string; username: string }, { id: string; username: string }];
+  showValidateError: string | null;
 }
 
 export interface LobbyRoom {

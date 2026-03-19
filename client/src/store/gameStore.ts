@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameState, LobbyRoom, Group, GroupType } from '../types';
+import { GameState, LobbyRoom, Group, GroupType, ShowState } from '../types';
 
 function groupPrefix(type: GroupType): string {
   return type === 'life' ? 'L' : type === 'secondLife' ? 'S' : 'T';
@@ -17,10 +17,11 @@ interface GameStoreState {
   gameState: GameState | null;
   lobbyRooms: LobbyRoom[];
   currentRoomId: string | null;
-  selectedCards: string[]; // card ids selected for grouping
+  selectedCards: string[];
   groups: Group[];
   showError: string | null;
   gameOverInfo: { winner: string; winnerUsername: string; reason?: string } | null;
+  showState: ShowState | null;
 
   setGameState: (state: GameState) => void;
   updateClock: (players: { id: string; timeLeft: number }[], currentTurn: number) => void;
@@ -32,6 +33,7 @@ interface GameStoreState {
   removeGroup: (index: number) => void;
   setShowError: (error: string | null) => void;
   setGameOver: (info: { winner: string; winnerUsername: string; reason?: string } | null) => void;
+  setShowState: (state: ShowState | null) => void;
   resetGame: () => void;
 }
 
@@ -43,6 +45,7 @@ export const useGameStore = create<GameStoreState>((set) => ({
   groups: [],
   showError: null,
   gameOverInfo: null,
+  showState: null,
 
   setGameState: (state) => set({ gameState: state }),
   updateClock: (players, currentTurn) =>
@@ -74,6 +77,7 @@ export const useGameStore = create<GameStoreState>((set) => ({
     set((s) => ({ groups: assignNames(s.groups.filter((_, i) => i !== index)) })),
   setShowError: (error) => set({ showError: error }),
   setGameOver: (info) => set({ gameOverInfo: info }),
+  setShowState: (state) => set({ showState: state }),
   resetGame: () =>
     set({
       gameState: null,
@@ -82,5 +86,6 @@ export const useGameStore = create<GameStoreState>((set) => ({
       groups: [],
       showError: null,
       gameOverInfo: null,
+      showState: null,
     }),
 }));

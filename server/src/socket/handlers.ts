@@ -68,6 +68,31 @@ function broadcastGameState(io: Server, state: GameState) {
   });
 }
 
+function broadcastShowState(io: Server, room: GameState) {
+  const players = room.players as [Player, Player];
+  const showingPlayerIdx = players.findIndex(p => p.id === room.showingPlayerId);
+  if (showingPlayerIdx === -1) return;
+  const showingPlayer = players[showingPlayerIdx];
+
+  const payload = {
+    roomId: room.roomId,
+    phase: room.phase,
+    showingPlayerId: room.showingPlayerId,
+    showingHand: showingPlayer.hand,
+    showGroups: room.showGroups,
+    showHandOrder: room.showHandOrder,
+    wildJokerCard: room.wildJokerCard,
+    winner: room.winner,
+    players: [
+      { id: players[0].id, username: players[0].username },
+      { id: players[1].id, username: players[1].username },
+    ],
+    showValidateError: room.showValidateError,
+  };
+
+  io.to(room.roomId).emit('game:showState', payload);
+}
+
 function startClock(io: Server, state: GameState) {
   if (state.clockInterval) clearInterval(state.clockInterval);
 
@@ -187,6 +212,10 @@ export function registerSocketHandlers(io: Server) {
         winner: null,
         hostId: socket.id,
         settings: { ...DEFAULT_SETTINGS },
+        showingPlayerId: null,
+        showGroups: [],
+        showHandOrder: [],
+        showValidateError: null,
       };
       setRoom(roomId, state);
       socket.join(roomId);
@@ -228,8 +257,8 @@ export function registerSocketHandlers(io: Server) {
     socket.on('room:settings', ({ roomId, settings }: { roomId: string; settings: Partial<RoomSettings> }) => {
       const room = getRoom(roomId);
       if (!room) return;
-      if (room.hostId !== socket.id) return; // only host
-      if (room.players.length > 1) return; // locked once opponent joins
+      if (room.hostId !== socket.id) return;
+      if (room.players.length > 1) return;
       if (room.phase === 'playing' || room.phase === 'finished') return;
 
       if (settings.turnTimeMs !== undefined) {
@@ -308,37 +337,99 @@ export function registerSocketHandlers(io: Server) {
       startClock(io, room);
     });
 
-    socket.on('game:show', ({ roomId, groups }: { roomId: string; groups: Group[] }) => {
+    // ── Show mechanic ──────────────────────────────────────────────
+
+    socket.on('game:startShow', ({ roomId, groups }: { roomId: string; groups: Group[] }) => {
       const room = getRoom(roomId);
       if (!room || room.phase !== 'playing') return;
       const players = room.players as [Player, Player];
       if (players[room.currentTurn].id !== socket.id) return;
       if (!room.drawnCard) return;
 
-      const currentPlayer = players[room.currentTurn];
+      // Stop the clock
+      if (room.clockInterval) clearInterval(room.clockInterval);
+      room.clockInterval = null;
+
+      const showingPlayer = players[room.currentTurn];
+      room.phase = 'showing';
+      room.showingPlayerId = socket.id;
+      room.showGroups = groups ?? [];
+      room.showHandOrder = showingPlayer.hand.map(c => c.id);
+      room.showValidateError = null;
+
+      setRoom(roomId, room);
+      broadcastShowState(io, room);
+    });
+
+    socket.on('game:showGroups', ({ roomId, groups }: { roomId: string; groups: Group[] }) => {
+      const room = getRoom(roomId);
+      if (!room || room.phase !== 'showing') return;
+      if (room.showingPlayerId !== socket.id) return;
+
+      room.showGroups = groups;
+      room.showValidateError = null;
+      setRoom(roomId, room);
+      broadcastShowState(io, room);
+    });
+
+    socket.on('game:showHandOrder', ({ roomId, handOrder }: { roomId: string; handOrder: string[] }) => {
+      const room = getRoom(roomId);
+      if (!room || room.phase !== 'showing') return;
+      if (room.showingPlayerId !== socket.id) return;
+
+      room.showHandOrder = handOrder;
+      setRoom(roomId, room);
+      broadcastShowState(io, room);
+    });
+
+    socket.on('game:validateShow', ({ roomId }: { roomId: string }) => {
+      const room = getRoom(roomId);
+      if (!room || room.phase !== 'showing') return;
+      if (room.showingPlayerId !== socket.id) return;
+
+      const players = room.players as [Player, Player];
+      const showingPlayerIdx = players.findIndex(p => p.id === socket.id);
+      const showingPlayer = players[showingPlayerIdx];
       const wildRank = room.wildJokerCard?.rank ?? null;
-      const result = validateShow(groups, currentPlayer.hand, wildRank);
+      const result = validateShow(room.showGroups, showingPlayer.hand, wildRank);
 
       if (!result.valid) {
-        socket.emit('game:showRejected', { error: result.error });
+        room.showValidateError = result.error ?? 'Invalid groups';
+        setRoom(roomId, room);
+        broadcastShowState(io, room);
         return;
       }
 
+      // Valid — winner declared
       room.phase = 'finished';
       room.winner = socket.id;
-      if (room.clockInterval) clearInterval(room.clockInterval);
-
+      room.showValidateError = null;
       setRoom(roomId, room);
-      broadcastGameState(io, room);
-      io.to(roomId).emit('game:over', {
-        winner: socket.id,
-        winnerUsername: currentPlayer.username,
-      });
+      broadcastShowState(io, room);
     });
+
+    socket.on('game:giveUp', ({ roomId }: { roomId: string }) => {
+      const room = getRoom(roomId);
+      if (!room || room.phase !== 'showing') return;
+      if (room.showingPlayerId !== socket.id) return;
+
+      const players = room.players as [Player, Player];
+      const loserIdx = players.findIndex(p => p.id === socket.id);
+      const winnerIdx = loserIdx === 0 ? 1 : 0;
+
+      room.phase = 'finished';
+      room.winner = players[winnerIdx].id;
+      room.showValidateError = null;
+      setRoom(roomId, room);
+      broadcastShowState(io, room);
+    });
+
+    // ── Legacy show (remove — replaced by startShow) ───────────────
+    // game:show is no longer used; game:startShow replaces it.
 
     socket.on('game:forfeit', ({ roomId }: { roomId: string }) => {
       const room = getRoom(roomId);
-      if (!room || room.phase !== 'playing') return;
+      if (!room || (room.phase !== 'playing' && room.phase !== 'showing')) return;
       const players = room.players as [Player, Player];
       const loserIndex = players.findIndex(p => p.id === socket.id);
       if (loserIndex === -1) return;
@@ -365,7 +456,17 @@ export function registerSocketHandlers(io: Server) {
 
     socket.on('game:request_state', ({ roomId }: { roomId: string }) => {
       const room = getRoom(roomId);
-      if (!room || room.phase !== 'playing') return;
+      if (!room) return;
+
+      if (room.phase === 'showing' || room.phase === 'finished') {
+        // Reconnecting during show — send show state
+        if (room.showingPlayerId) {
+          broadcastShowState(io, room);
+        }
+        return;
+      }
+
+      if (room.phase !== 'playing') return;
       const players = room.players as [Player, Player];
       const playerIndex = players.findIndex(p => p.id === socket.id);
       if (playerIndex === -1) return;
@@ -396,7 +497,7 @@ export function registerSocketHandlers(io: Server) {
         const inRoom = (room.players as Player[]).some(p => p.id === socket.id);
         if (!inRoom) continue;
 
-        if (room.phase === 'playing') {
+        if (room.phase === 'playing' || room.phase === 'showing') {
           room.phase = 'finished';
           const opponent = (room.players as Player[]).find(p => p.id !== socket.id);
           room.winner = opponent?.id ?? null;

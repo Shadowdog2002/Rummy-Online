@@ -1,4 +1,4 @@
-export type Suit = 'S' | 'H' | 'D' | 'C'; // Spades, Hearts, Diamonds, Clubs
+export type Suit = 'S' | 'H' | 'D' | 'C';
 export type Rank =
   | 'A' | '2' | '3' | '4' | '5' | '6' | '7'
   | '8' | '9' | '10' | 'J' | 'Q' | 'K';
@@ -22,11 +22,20 @@ export type GamePhase =
   | 'waiting'
   | 'ready'
   | 'playing'
+  | 'showing'
   | 'finished';
 
 export interface RoomSettings {
-  turnTimeMs: number;   // ms per turn
-  jokerCount: number;   // number of printed jokers (0–4)
+  turnTimeMs: number;
+  jokerCount: number;
+}
+
+export type GroupType = 'life' | 'secondLife' | 'triplet';
+
+export interface Group {
+  type: GroupType;
+  cards: Card[];
+  name?: string;
 }
 
 export interface GameState {
@@ -42,4 +51,8 @@ export interface GameState {
   winner: string | null;
   hostId: string;
   settings: RoomSettings;
+  showingPlayerId: string | null;
+  showGroups: Group[];
+  showHandOrder: string[];
+  showValidateError: string | null;
 }
