@@ -31,7 +31,7 @@ export default function HomePage() {
       let url = '';
       let body: Record<string, string> = {};
 
-      const api = `http://${window.location.hostname}:3001`;
+      const api = import.meta.env.PROD ? window.location.origin : `http://${window.location.hostname}:3001`;
       if (tab === 'guest') {
         url = `${api}/auth/guest`;
         body = { username };
