@@ -5,7 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import prisma from '../db/client';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET ?? 'fallback-secret';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 router.post('/guest', (req: Request, res: Response) => {
   const { username } = req.body as { username?: string };
