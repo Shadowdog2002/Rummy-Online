@@ -24,7 +24,8 @@ interface GameStoreState {
   showState: ShowState | null;
 
   setGameState: (state: GameState) => void;
-  updateClock: (players: { id: string; timeLeft: number }[], currentTurn: number) => void;
+  updateClock: (players: { id: string; timeLeft: number }[]) => void;
+  mergeShowUpdate: (update: { showGroups: Group[]; showHandOrder: string[]; showValidateError: string | null }) => void;
   setLobbyRooms: (rooms: LobbyRoom[]) => void;
   setCurrentRoom: (roomId: string | null) => void;
   toggleCardSelection: (cardId: string) => void;
@@ -48,17 +49,28 @@ export const useGameStore = create<GameStoreState>((set) => ({
   showState: null,
 
   setGameState: (state) => set({ gameState: state }),
-  updateClock: (players, currentTurn) =>
+  updateClock: (players) =>
     set((s) => {
       if (!s.gameState) return {};
       return {
         gameState: {
           ...s.gameState,
-          currentTurn,
           players: s.gameState.players.map((p) => ({
             ...p,
             timeLeft: players.find(pl => pl.id === p.id)?.timeLeft ?? p.timeLeft,
           })) as [typeof s.gameState.players[0], typeof s.gameState.players[1]],
+        },
+      };
+    }),
+  mergeShowUpdate: (update) =>
+    set((s) => {
+      if (!s.showState) return {};
+      return {
+        showState: {
+          ...s.showState,
+          showGroups: update.showGroups,
+          showHandOrder: update.showHandOrder,
+          showValidateError: update.showValidateError,
         },
       };
     }),

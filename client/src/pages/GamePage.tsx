@@ -26,7 +26,7 @@ export default function GamePage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const {
-    gameState, setGameState, updateClock,
+    gameState, setGameState, updateClock, mergeShowUpdate,
     selectedCards, toggleCardSelection, clearSelection,
     groups, showError, setShowError,
     gameOverInfo, setGameOver,
@@ -67,12 +67,16 @@ export default function GamePage() {
       setGameState(state);
     });
 
-    socket.on('game:clock', (data: { players: { id: string; timeLeft: number }[]; currentTurn: number }) => {
-      updateClock(data.players, data.currentTurn);
+    socket.on('game:clock', (data: { players: { id: string; timeLeft: number }[] }) => {
+      updateClock(data.players);
     });
 
     socket.on('game:showState', (state) => {
       setShowState(state);
+    });
+
+    socket.on('game:showUpdate', (update: { showGroups: import('../types').Group[]; showHandOrder: string[]; showValidateError: string | null }) => {
+      mergeShowUpdate(update);
     });
 
     socket.on('game:over', (info: { winner: string; winnerUsername: string; reason?: string }) => {
@@ -87,6 +91,7 @@ export default function GamePage() {
       socket.off('game:state');
       socket.off('game:clock');
       socket.off('game:showState');
+      socket.off('game:showUpdate');
       socket.off('game:over');
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -258,14 +263,14 @@ export default function GamePage() {
           <span className="text-xs text-green-400">Deck</span>
         </div>
         <div className="flex flex-col items-center gap-1">
-          {gameState.openPile.length > 0 ? (
+          {gameState.topOpenCard ? (
             <button
               disabled={!isMyTurn || !!drawnCard}
               onClick={() => draw('open')}
               className="disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="hover:border-yellow-400 transition-colors rounded-lg">
-                <CardComponent card={gameState.openPile[0]} />
+                <CardComponent card={gameState.topOpenCard} />
               </div>
             </button>
           ) : (

@@ -28,7 +28,7 @@ export interface GameState {
   phase: 'waiting' | 'ready' | 'playing' | 'showing' | 'finished';
   myHand: Card[];
   opponentCardCount: number;
-  openPile: Card[];
+  topOpenCard: Card | null;
   deckCount: number;
   currentTurn: number;
   drawnCard: Card | null;

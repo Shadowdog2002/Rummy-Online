@@ -10,7 +10,7 @@ export default function ChessClock({ timeLeft, isActive, username, clockMode }: 
   const isLow = seconds <= (clockMode === 'countdown' ? 15 : 10);
   const display = seconds >= 60
     ? `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
-    : seconds.toFixed(1) + 's';
+    : `${Math.floor(seconds)}s`;
 
   return (
     <div

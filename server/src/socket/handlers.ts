@@ -8,7 +8,7 @@ import { Card, GameState, Player, Rank, RoomSettings } from '../game/types';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
-const TICK_INTERVAL_MS = 100;
+const TICK_INTERVAL_MS = 1000;
 
 const DEFAULT_SETTINGS: RoomSettings = {
   turnTimeMs: 60_000,
@@ -40,7 +40,7 @@ function broadcastGameState(io: Server, state: GameState) {
   const sharedFields = {
     roomId: state.roomId,
     phase: state.phase,
-    openPile: state.openPile,
+    topOpenCard: state.openPile[0] ?? null,
     deckCount: state.deck.length,
     currentTurn: state.currentTurn,
     drawnCard: state.drawnCard,
@@ -132,7 +132,6 @@ function startClock(io: Server, state: GameState) {
             id: pl.id,
             timeLeft: pl.timeLeft,
           })),
-          currentTurn: room.currentTurn,
         });
       });
     }
@@ -403,7 +402,11 @@ export function registerSocketHandlers(io: Server) {
       room.showGroups = groups;
       room.showValidateError = null;
       setRoom(roomId, room);
-      broadcastShowState(io, room);
+      io.to(roomId).emit('game:showUpdate', {
+        showGroups: room.showGroups,
+        showHandOrder: room.showHandOrder,
+        showValidateError: null,
+      });
     });
 
     socket.on('game:showHandOrder', ({ roomId, handOrder }: { roomId: string; handOrder: string[] }) => {
@@ -413,7 +416,11 @@ export function registerSocketHandlers(io: Server) {
 
       room.showHandOrder = handOrder;
       setRoom(roomId, room);
-      broadcastShowState(io, room);
+      io.to(roomId).emit('game:showUpdate', {
+        showGroups: room.showGroups,
+        showHandOrder: room.showHandOrder,
+        showValidateError: room.showValidateError,
+      });
     });
 
     socket.on('game:validateShow', ({ roomId }: { roomId: string }) => {
@@ -512,7 +519,7 @@ export function registerSocketHandlers(io: Server) {
         phase: room.phase,
         myHand: me.hand,
         opponentCardCount: opponent.hand.length,
-        openPile: room.openPile,
+        topOpenCard: room.openPile[0] ?? null,
         deckCount: room.deck.length,
         currentTurn: room.currentTurn,
         drawnCard: room.drawnCard,
