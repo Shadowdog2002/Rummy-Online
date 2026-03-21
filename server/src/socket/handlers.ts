@@ -6,7 +6,7 @@ import { createDeck } from '../game/deck';
 import { validateShow, Group } from '../game/validator';
 import { Card, GameState, Player, Rank, RoomSettings } from '../game/types';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET!;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 const TICK_INTERVAL_MS = 100;
 
