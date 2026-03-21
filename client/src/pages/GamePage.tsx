@@ -124,11 +124,12 @@ export default function GamePage() {
     if (g.name) g.cards.forEach(c => cardGroupName.set(c.id, g.name!));
   });
 
+  const iTimedOut = gameState.timedOut === myPlayer.id;
   const canShow = isMyTurn && !!drawnCard;
 
-  // Discard requires exactly 1 selected, ungrouped card, and a drawn card
+  // Discard requires exactly 1 selected, ungrouped card, a drawn card, and not timed out
   const groupedCardIds = new Set(groups.flatMap(g => g.cards.map(c => c.id)));
-  const discardMode = isMyTurn && !!drawnCard;
+  const discardMode = isMyTurn && !!drawnCard && !iTimedOut;
   const ungroupedSelected = selectedCards.filter(id => !groupedCardIds.has(id));
   const canDiscard = discardMode && ungroupedSelected.length === 1;
 
@@ -153,7 +154,7 @@ export default function GamePage() {
   function show() {
     if (!canShow) return;
     setShowError(null);
-    socket.emit('game:startShow', { roomId, groups });
+    socket.emit('game:startShow', { roomId, groups, handOrder });
   }
 
   function leaveGame() {
@@ -220,7 +221,7 @@ export default function GamePage() {
 
       {/* Top bar: clocks + wild joker */}
       <div className="flex items-center justify-between">
-        <ChessClock timeLeft={myPlayer.timeLeft} isActive={isMyTurn} username={`${myPlayer.username} (you)`} />
+        <ChessClock timeLeft={myPlayer.timeLeft} isActive={isMyTurn} username={`${myPlayer.username} (you)`} clockMode={gameState.clockMode} />
         <div className="flex flex-col items-center gap-1">
           <span className="text-xs text-green-400">Wild Joker</span>
           {gameState.wildJokerCard ? (
@@ -229,7 +230,7 @@ export default function GamePage() {
             <div className="w-12 h-16 rounded bg-felt-dark border border-green-700" />
           )}
         </div>
-        <ChessClock timeLeft={opponentPlayer.timeLeft} isActive={!isMyTurn} username={opponentPlayer.username} />
+        <ChessClock timeLeft={opponentPlayer.timeLeft} isActive={!isMyTurn} username={opponentPlayer.username} clockMode={gameState.clockMode} />
       </div>
 
       {/* Opponent's hand */}
@@ -280,12 +281,29 @@ export default function GamePage() {
           isMyTurn ? 'bg-green-700 text-white' : 'bg-felt text-green-400'
         }`}>
           {isMyTurn
-            ? discardMode
-              ? 'You drew — group cards, then Show or Discard'
-              : 'Your turn — draw a card'
+            ? iTimedOut
+              ? drawnCard ? 'Time\'s up — you must Show!' : 'Time\'s up — draw a card, then Show'
+              : discardMode
+                ? 'You drew — group cards, then Show or Discard'
+                : 'Your turn — draw a card'
             : `${opponentPlayer.username}'s turn`}
         </span>
       </div>
+
+      {/* Timed-out banner */}
+      {iTimedOut && (
+        <div className="bg-red-900/70 border border-red-500 rounded-xl px-4 py-3 text-center">
+          <p className="text-red-300 font-bold text-sm">⏰ Time's up! You can no longer discard.</p>
+          <p className="text-red-400 text-xs mt-0.5">
+            {drawnCard ? 'Group your cards and click Show to attempt a win.' : 'Draw your card, then Show to attempt a win.'}
+          </p>
+        </div>
+      )}
+      {gameState.timedOut && gameState.timedOut !== myPlayer.id && (
+        <div className="bg-yellow-900/50 border border-yellow-600 rounded-xl px-4 py-2 text-center">
+          <p className="text-yellow-300 text-sm">⏰ {opponentPlayer.username}'s time ran out — they must Show.</p>
+        </div>
+      )}
 
       {/* Hand — clicking always selects for grouping */}
       <div className="flex flex-col items-center gap-1">

@@ -35,6 +35,8 @@ export interface GameState {
   wildJokerCard: Card | null;
   players: [PlayerInfo, PlayerInfo];
   winner: string | null;
+  clockMode: 'turn' | 'countdown';
+  timedOut: string | null;
 }
 
 export interface ShowState {

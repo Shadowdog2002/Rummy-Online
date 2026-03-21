@@ -13,7 +13,10 @@ export function initSocket(token: string): Socket {
   if (socket) {
     socket.disconnect();
   }
-  socket = io(`http://${window.location.hostname}:3001`, {
+  const serverUrl = import.meta.env.PROD
+    ? window.location.origin
+    : `http://${window.location.hostname}:3001`;
+  socket = io(serverUrl, {
     auth: { token },
     autoConnect: true,
   });

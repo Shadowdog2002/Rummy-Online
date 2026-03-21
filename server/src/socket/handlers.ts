@@ -12,6 +12,9 @@ const TICK_INTERVAL_MS = 100;
 const DEFAULT_SETTINGS: RoomSettings = {
   turnTimeMs: 60_000,
   jokerCount: 2,
+  clockMode: 'turn',
+  totalTimeMs: 60_000,
+  incrementMs: 0,
 };
 
 interface AuthPayload {
@@ -33,11 +36,9 @@ function buildRoomUpdate(room: GameState) {
 function broadcastGameState(io: Server, state: GameState) {
   const [p0, p1] = state.players as [Player, Player];
 
-  io.to(p0.id).emit('game:state', {
+  const sharedFields = {
     roomId: state.roomId,
     phase: state.phase,
-    myHand: p0.hand,
-    opponentCardCount: p1.hand.length,
     openPile: state.openPile,
     deckCount: state.deck.length,
     currentTurn: state.currentTurn,
@@ -48,24 +49,12 @@ function broadcastGameState(io: Server, state: GameState) {
       { id: p1.id, username: p1.username, timeLeft: p1.timeLeft },
     ],
     winner: state.winner,
-  });
+    clockMode: state.settings.clockMode,
+    timedOut: state.timedOut,
+  };
 
-  io.to(p1.id).emit('game:state', {
-    roomId: state.roomId,
-    phase: state.phase,
-    myHand: p1.hand,
-    opponentCardCount: p0.hand.length,
-    openPile: state.openPile,
-    deckCount: state.deck.length,
-    currentTurn: state.currentTurn,
-    drawnCard: state.drawnCard,
-    wildJokerCard: state.wildJokerCard,
-    players: [
-      { id: p0.id, username: p0.username, timeLeft: p0.timeLeft },
-      { id: p1.id, username: p1.username, timeLeft: p1.timeLeft },
-    ],
-    winner: state.winner,
-  });
+  io.to(p0.id).emit('game:state', { ...sharedFields, myHand: p0.hand, opponentCardCount: p1.hand.length });
+  io.to(p1.id).emit('game:state', { ...sharedFields, myHand: p1.hand, opponentCardCount: p0.hand.length });
 }
 
 function broadcastShowState(io: Server, room: GameState) {
@@ -103,30 +92,42 @@ function startClock(io: Server, state: GameState) {
       return;
     }
 
-    const currentPlayer = (room.players as [Player, Player])[room.currentTurn];
+    const players = room.players as [Player, Player];
+    const currentPlayer = players[room.currentTurn];
     currentPlayer.timeLeft -= TICK_INTERVAL_MS;
 
     if (currentPlayer.timeLeft <= 0) {
       currentPlayer.timeLeft = 0;
-      if (room.drawnCard) {
-        room.openPile.unshift(room.drawnCard);
-        currentPlayer.hand = currentPlayer.hand.filter(c => c.id !== room.drawnCard!.id);
-        room.drawnCard = null;
-      } else if (currentPlayer.hand.length > 0) {
-        const randomIdx = Math.floor(Math.random() * currentPlayer.hand.length);
-        const [discarded] = currentPlayer.hand.splice(randomIdx, 1);
-        room.openPile.unshift(discarded);
+
+      if (room.settings.clockMode === 'countdown') {
+        // Countdown mode: player ran out of time → they must Show (cannot discard)
+        clearInterval(state.clockInterval!);
+        room.clockInterval = null;
+        room.timedOut = currentPlayer.id;
+        setRoom(room.roomId, room);
+        broadcastGameState(io, room);
+      } else {
+        // Per-turn mode: auto-discard and pass turn
+        if (room.drawnCard) {
+          room.openPile.unshift(room.drawnCard);
+          currentPlayer.hand = currentPlayer.hand.filter(c => c.id !== room.drawnCard!.id);
+          room.drawnCard = null;
+        } else if (currentPlayer.hand.length > 0) {
+          const randomIdx = Math.floor(Math.random() * currentPlayer.hand.length);
+          const [discarded] = currentPlayer.hand.splice(randomIdx, 1);
+          room.openPile.unshift(discarded);
+        }
+        room.currentTurn = room.currentTurn === 0 ? 1 : 0;
+        const next = players[room.currentTurn];
+        next.timeLeft = room.settings.turnTimeMs;
+        setRoom(room.roomId, room);
+        broadcastGameState(io, room);
       }
-      room.currentTurn = room.currentTurn === 0 ? 1 : 0;
-      const next = (room.players as [Player, Player])[room.currentTurn];
-      next.timeLeft = room.settings.turnTimeMs;
-      setRoom(room.roomId, room);
-      broadcastGameState(io, room);
     } else {
       setRoom(room.roomId, room);
-      (room.players as [Player, Player]).forEach(p => {
+      players.forEach(p => {
         io.to(p.id).emit('game:clock', {
-          players: (room.players as [Player, Player]).map(pl => ({
+          players: players.map(pl => ({
             id: pl.id,
             timeLeft: pl.timeLeft,
           })),
@@ -160,12 +161,18 @@ function startGame(io: Server, state: GameState) {
   state.phase = 'playing';
   state.currentTurn = 0;
   state.drawnCard = null;
-  p0.timeLeft = state.settings.turnTimeMs;
-  p1.timeLeft = state.settings.turnTimeMs;
+  const startTime = state.settings.clockMode === 'countdown'
+    ? state.settings.totalTimeMs
+    : state.settings.turnTimeMs;
+  p0.timeLeft = startTime;
+  p1.timeLeft = startTime;
 
   setRoom(state.roomId, state);
   broadcastGameState(io, state);
-  startClock(io, state);
+  if (state.settings.clockMode === 'turn') {
+    startClock(io, state);
+  }
+  // countdown mode: clock starts on first draw
 }
 
 export function registerSocketHandlers(io: Server) {
@@ -216,6 +223,7 @@ export function registerSocketHandlers(io: Server) {
         showGroups: [],
         showHandOrder: [],
         showValidateError: null,
+        timedOut: null,
       };
       setRoom(roomId, state);
       socket.join(roomId);
@@ -258,8 +266,7 @@ export function registerSocketHandlers(io: Server) {
       const room = getRoom(roomId);
       if (!room) return;
       if (room.hostId !== socket.id) return;
-      if (room.players.length > 1) return;
-      if (room.phase === 'playing' || room.phase === 'finished') return;
+      if (room.phase === 'playing' || room.phase === 'showing' || room.phase === 'finished') return;
 
       if (settings.turnTimeMs !== undefined) {
         room.settings.turnTimeMs = Math.max(10_000, Math.min(300_000, settings.turnTimeMs));
@@ -267,8 +274,17 @@ export function registerSocketHandlers(io: Server) {
       if (settings.jokerCount !== undefined) {
         room.settings.jokerCount = Math.max(0, Math.min(4, settings.jokerCount));
       }
+      if (settings.clockMode === 'turn' || settings.clockMode === 'countdown') {
+        room.settings.clockMode = settings.clockMode;
+      }
+      if (settings.totalTimeMs !== undefined) {
+        room.settings.totalTimeMs = Math.max(10_000, Math.min(600_000, settings.totalTimeMs));
+      }
+      if (settings.incrementMs !== undefined) {
+        room.settings.incrementMs = Math.max(0, Math.min(60_000, settings.incrementMs));
+      }
       setRoom(roomId, room);
-      socket.emit('room:update', buildRoomUpdate(room));
+      io.to(roomId).emit('room:update', buildRoomUpdate(room));
     });
 
     socket.on('room:ready', ({ roomId }: { roomId: string }) => {
@@ -312,6 +328,11 @@ export function registerSocketHandlers(io: Server) {
       room.drawnCard = card;
       setRoom(roomId, room);
       broadcastGameState(io, room);
+
+      // countdown mode: start clock on first draw (clockInterval is null until then)
+      if (room.settings.clockMode === 'countdown' && !room.clockInterval) {
+        startClock(io, room);
+      }
     });
 
     socket.on('game:discard', ({ roomId, cardId }: { roomId: string; cardId: string }) => {
@@ -320,6 +341,7 @@ export function registerSocketHandlers(io: Server) {
       const players = room.players as [Player, Player];
       if (players[room.currentTurn].id !== socket.id) return;
       if (!room.drawnCard) return;
+      if (room.timedOut === socket.id) return; // timed-out player must Show
 
       const currentPlayer = players[room.currentTurn];
       const idx = currentPlayer.hand.findIndex(c => c.id === cardId);
@@ -329,8 +351,16 @@ export function registerSocketHandlers(io: Server) {
       room.openPile.unshift(discarded);
       room.drawnCard = null;
 
+      if (room.settings.clockMode === 'countdown') {
+        // Add increment to the player who just finished their turn
+        currentPlayer.timeLeft += room.settings.incrementMs;
+      }
+
       room.currentTurn = room.currentTurn === 0 ? 1 : 0;
-      players[room.currentTurn].timeLeft = room.settings.turnTimeMs;
+
+      if (room.settings.clockMode === 'turn') {
+        players[room.currentTurn].timeLeft = room.settings.turnTimeMs;
+      }
 
       setRoom(roomId, room);
       broadcastGameState(io, room);
@@ -339,7 +369,7 @@ export function registerSocketHandlers(io: Server) {
 
     // ── Show mechanic ──────────────────────────────────────────────
 
-    socket.on('game:startShow', ({ roomId, groups }: { roomId: string; groups: Group[] }) => {
+    socket.on('game:startShow', ({ roomId, groups, handOrder }: { roomId: string; groups: Group[]; handOrder?: string[] }) => {
       const room = getRoom(roomId);
       if (!room || room.phase !== 'playing') return;
       const players = room.players as [Player, Player];
@@ -354,7 +384,10 @@ export function registerSocketHandlers(io: Server) {
       room.phase = 'showing';
       room.showingPlayerId = socket.id;
       room.showGroups = groups ?? [];
-      room.showHandOrder = showingPlayer.hand.map(c => c.id);
+      const handIds = new Set(showingPlayer.hand.map(c => c.id));
+      const validOrder = (handOrder ?? []).filter(id => handIds.has(id));
+      const remaining = showingPlayer.hand.map(c => c.id).filter(id => !validOrder.includes(id));
+      room.showHandOrder = [...validOrder, ...remaining];
       room.showValidateError = null;
 
       setRoom(roomId, room);
@@ -488,6 +521,8 @@ export function registerSocketHandlers(io: Server) {
           { id: players[1].id, username: players[1].username, timeLeft: players[1].timeLeft },
         ],
         winner: room.winner,
+        clockMode: room.settings.clockMode,
+        timedOut: room.timedOut,
       });
     });
 

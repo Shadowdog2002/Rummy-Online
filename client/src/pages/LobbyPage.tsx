@@ -6,13 +6,21 @@ import { getSocket, disconnectSocket } from '../socket';
 import { LobbyRoom, GameState } from '../types';
 
 const TURN_TIME_OPTIONS = [30, 45, 60, 90, 120, 180, 300]; // seconds
+const COUNTDOWN_TIME_OPTIONS = [30, 45, 60, 90]; // seconds per player
+const INCREMENT_OPTIONS = [0, 1, 3, 5, 10]; // seconds added after each turn
 
 interface RoomUpdateInfo {
   roomId: string;
   players: { id: string; username: string; ready: boolean }[];
   phase: string;
   hostId: string;
-  settings: { turnTimeMs: number; jokerCount: number };
+  settings: {
+    turnTimeMs: number;
+    jokerCount: number;
+    clockMode: 'turn' | 'countdown';
+    totalTimeMs: number;
+    incrementMs: number;
+  };
 }
 
 export default function LobbyPage() {
@@ -90,19 +98,14 @@ export default function LobbyPage() {
     navigate('/');
   }
 
-  function setTurnTime(seconds: number) {
+  function emitSetting(partial: object) {
     if (!roomUpdateInfo) return;
-    getSocket().emit('room:settings', { roomId: roomUpdateInfo.roomId, settings: { turnTimeMs: seconds * 1000 } });
-  }
-
-  function setJokerCount(count: number) {
-    if (!roomUpdateInfo) return;
-    getSocket().emit('room:settings', { roomId: roomUpdateInfo.roomId, settings: { jokerCount: count } });
+    getSocket().emit('room:settings', { roomId: roomUpdateInfo.roomId, settings: partial });
   }
 
   const myInfo = roomUpdateInfo?.players.find(p => p.id === mySocketId);
   const isHost = roomUpdateInfo?.hostId === mySocketId;
-  const canEditSettings = isHost && roomUpdateInfo?.players.length === 1;
+  const canEditSettings = isHost;
 
   return (
     <div className="min-h-screen flex flex-col items-center pt-16 px-4">
@@ -143,33 +146,110 @@ export default function LobbyPage() {
             {/* Settings */}
             <div className="border-t border-green-700 pt-3 mb-4 space-y-3">
               <p className="text-xs font-semibold text-green-300 uppercase tracking-wide">
-                Room Settings {canEditSettings ? '' : <span className="text-green-700 normal-case">(locked once opponent joins)</span>}
+                Room Settings {!canEditSettings && <span className="text-green-700 normal-case">(host only)</span>}
               </p>
 
-              {/* Turn time */}
+              {/* Clock mode */}
               <div>
-                <p className="text-xs text-green-400 mb-1">
-                  Turn Time: <span className="text-yellow-400 font-bold">{roomUpdateInfo.settings.turnTimeMs / 1000}s</span>
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {TURN_TIME_OPTIONS.map(s => (
+                <p className="text-xs text-green-400 mb-1">Clock Mode</p>
+                <div className="flex gap-1">
+                  {(['turn', 'countdown'] as const).map(mode => (
                     <button
-                      key={s}
+                      key={mode}
                       disabled={!canEditSettings}
-                      onClick={() => setTurnTime(s)}
-                      className={`px-2 py-1 rounded text-xs font-bold transition-colors ${
-                        roomUpdateInfo.settings.turnTimeMs === s * 1000
+                      onClick={() => emitSetting({ clockMode: mode })}
+                      className={`px-3 py-1 rounded text-xs font-bold transition-colors ${
+                        roomUpdateInfo.settings.clockMode === mode
                           ? 'bg-yellow-400 text-felt-dark'
                           : canEditSettings
                             ? 'bg-felt-dark text-green-400 border border-green-700 hover:border-yellow-400'
                             : 'bg-felt-dark text-green-800 border border-green-900 cursor-not-allowed'
                       }`}
                     >
-                      {s}s
+                      {mode === 'turn' ? 'Per-Turn Timer' : 'Countdown Clock'}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {/* Per-turn mode: turn time */}
+              {roomUpdateInfo.settings.clockMode === 'turn' && (
+                <div>
+                  <p className="text-xs text-green-400 mb-1">
+                    Turn Time: <span className="text-yellow-400 font-bold">{roomUpdateInfo.settings.turnTimeMs / 1000}s</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {TURN_TIME_OPTIONS.map(s => (
+                      <button
+                        key={s}
+                        disabled={!canEditSettings}
+                        onClick={() => emitSetting({ turnTimeMs: s * 1000 })}
+                        className={`px-2 py-1 rounded text-xs font-bold transition-colors ${
+                          roomUpdateInfo.settings.turnTimeMs === s * 1000
+                            ? 'bg-yellow-400 text-felt-dark'
+                            : canEditSettings
+                              ? 'bg-felt-dark text-green-400 border border-green-700 hover:border-yellow-400'
+                              : 'bg-felt-dark text-green-800 border border-green-900 cursor-not-allowed'
+                        }`}
+                      >
+                        {s}s
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Countdown mode: total time + increment */}
+              {roomUpdateInfo.settings.clockMode === 'countdown' && (
+                <>
+                  <div>
+                    <p className="text-xs text-green-400 mb-1">
+                      Time per Player: <span className="text-yellow-400 font-bold">{roomUpdateInfo.settings.totalTimeMs / 1000}s</span>
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {COUNTDOWN_TIME_OPTIONS.map(s => (
+                        <button
+                          key={s}
+                          disabled={!canEditSettings}
+                          onClick={() => emitSetting({ totalTimeMs: s * 1000 })}
+                          className={`px-2 py-1 rounded text-xs font-bold transition-colors ${
+                            roomUpdateInfo.settings.totalTimeMs === s * 1000
+                              ? 'bg-yellow-400 text-felt-dark'
+                              : canEditSettings
+                                ? 'bg-felt-dark text-green-400 border border-green-700 hover:border-yellow-400'
+                                : 'bg-felt-dark text-green-800 border border-green-900 cursor-not-allowed'
+                          }`}
+                        >
+                          {s}s
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-green-400 mb-1">
+                      Increment per Turn: <span className="text-yellow-400 font-bold">+{roomUpdateInfo.settings.incrementMs / 1000}s</span>
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {INCREMENT_OPTIONS.map(s => (
+                        <button
+                          key={s}
+                          disabled={!canEditSettings}
+                          onClick={() => emitSetting({ incrementMs: s * 1000 })}
+                          className={`px-2 py-1 rounded text-xs font-bold transition-colors ${
+                            roomUpdateInfo.settings.incrementMs === s * 1000
+                              ? 'bg-yellow-400 text-felt-dark'
+                              : canEditSettings
+                                ? 'bg-felt-dark text-green-400 border border-green-700 hover:border-yellow-400'
+                                : 'bg-felt-dark text-green-800 border border-green-900 cursor-not-allowed'
+                          }`}
+                        >
+                          +{s}s
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Joker count */}
               <div>
@@ -181,7 +261,7 @@ export default function LobbyPage() {
                     <button
                       key={n}
                       disabled={!canEditSettings}
-                      onClick={() => setJokerCount(n)}
+                      onClick={() => emitSetting({ jokerCount: n })}
                       className={`px-3 py-1 rounded text-xs font-bold transition-colors ${
                         roomUpdateInfo.settings.jokerCount === n
                           ? 'bg-yellow-400 text-felt-dark'

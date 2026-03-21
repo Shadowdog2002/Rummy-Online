@@ -28,6 +28,9 @@ export type GamePhase =
 export interface RoomSettings {
   turnTimeMs: number;
   jokerCount: number;
+  clockMode: 'turn' | 'countdown';
+  totalTimeMs: number;   // countdown mode: total time budget per player
+  incrementMs: number;   // countdown mode: seconds added after each turn
 }
 
 export type GroupType = 'life' | 'secondLife' | 'triplet';
@@ -55,4 +58,5 @@ export interface GameState {
   showGroups: Group[];
   showHandOrder: string[];
   showValidateError: string | null;
+  timedOut: string | null;  // countdown mode: player ID who ran out of time (must Show)
 }

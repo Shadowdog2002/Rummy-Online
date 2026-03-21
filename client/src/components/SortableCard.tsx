@@ -20,6 +20,7 @@ export default function SortableCard({ card, selected, onClick, groupLabel, isDr
     transition,
     zIndex: isDragging ? 50 : undefined,
     opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none',
   };
 
   return (

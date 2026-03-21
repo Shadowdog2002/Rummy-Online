@@ -2,12 +2,15 @@ interface Props {
   timeLeft: number; // ms
   isActive: boolean;
   username: string;
+  clockMode?: 'turn' | 'countdown';
 }
 
-export default function ChessClock({ timeLeft, isActive, username }: Props) {
+export default function ChessClock({ timeLeft, isActive, username, clockMode }: Props) {
   const seconds = timeLeft / 1000;
-  const isLow = seconds <= 10;
-  const display = seconds >= 10 ? seconds.toFixed(1) : seconds.toFixed(1);
+  const isLow = seconds <= (clockMode === 'countdown' ? 15 : 10);
+  const display = seconds >= 60
+    ? `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
+    : seconds.toFixed(1) + 's';
 
   return (
     <div
@@ -24,8 +27,11 @@ export default function ChessClock({ timeLeft, isActive, username }: Props) {
     >
       <span className="text-xs text-green-300 mb-1 truncate max-w-[90px] text-center">{username}</span>
       <span className={`text-2xl font-mono font-bold ${isLow && isActive ? 'text-red-400' : 'text-white'}`}>
-        {display}s
+        {display}
       </span>
+      {clockMode === 'countdown' && (
+        <span className="text-[10px] text-green-600 mt-0.5">total</span>
+      )}
     </div>
   );
 }

@@ -37,10 +37,12 @@ export default function ShowScreen({ showState, mySocketId, roomId, onLeave }: P
   const isShowingPlayer = showState.showingPlayerId === mySocketId;
   const socket = getSocket();
 
-  const { groups, addGroup, removeGroup, clearSelection, selectedCards, toggleCardSelection } = useGameStore();
+  const { groups, clearSelection, selectedCards, toggleCardSelection } = useGameStore();
 
   const [handOrder, setHandOrder] = useState<string[]>(
-    showState.showingHand.map(c => c.id)
+    showState.showHandOrder.length
+      ? showState.showHandOrder
+      : showState.showingHand.map(c => c.id)
   );
   const [confirmGiveUp, setConfirmGiveUp] = useState(false);
 
@@ -103,7 +105,6 @@ export default function ShowScreen({ showState, mySocketId, roomId, onLeave }: P
     setConfirmGiveUp(false);
   }
 
-  const myUsername = showState.players.find(p => p.id === mySocketId)?.username ?? '';
   const showingUsername = showState.players.find(p => p.id === showState.showingPlayerId)?.username ?? '';
   const isFinished = showState.phase === 'finished';
   const iWon = showState.winner === mySocketId;
