@@ -12,10 +12,10 @@ const TICK_INTERVAL_MS = 1000;
 
 const DEFAULT_SETTINGS: RoomSettings = {
   turnTimeMs: 60_000,
-  jokerCount: 2,
-  clockMode: 'turn',
+  jokerCount: 0,
+  clockMode: 'countdown',
   totalTimeMs: 60_000,
-  incrementMs: 0,
+  incrementMs: 1_000,
 };
 
 interface AuthPayload {
@@ -113,11 +113,8 @@ function startClock(io: Server, state: GameState) {
           room.openPile.unshift(room.drawnCard);
           currentPlayer.hand = currentPlayer.hand.filter(c => c.id !== room.drawnCard!.id);
           room.drawnCard = null;
-        } else if (currentPlayer.hand.length > 0) {
-          const randomIdx = Math.floor(Math.random() * currentPlayer.hand.length);
-          const [discarded] = currentPlayer.hand.splice(randomIdx, 1);
-          room.openPile.unshift(discarded);
         }
+        // If no drawnCard, player hadn't drawn yet — just end their turn with no change
         room.currentTurn = room.currentTurn === 0 ? 1 : 0;
         const next = players[room.currentTurn];
         next.timeLeft = room.settings.turnTimeMs;
