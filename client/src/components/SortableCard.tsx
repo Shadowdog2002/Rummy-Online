@@ -19,7 +19,7 @@ export default function SortableCard({ card, selected, onClick, groupLabel, isDr
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 50 : undefined,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0 : 1,
     touchAction: 'none',
   };
 

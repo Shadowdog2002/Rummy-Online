@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -7,6 +7,9 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+  useDroppable,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -22,6 +25,17 @@ import GroupPanel from '../components/GroupPanel';
 import SortableCard from '../components/SortableCard';
 import ShowScreen from '../components/ShowScreen';
 
+const OPEN_PILE_DROP_ID = 'open-pile-drop';
+
+function OpenPileDropZone({ children, canDrop }: { children: React.ReactNode; canDrop: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({ id: OPEN_PILE_DROP_ID });
+  return (
+    <div ref={setNodeRef} className={isOver && canDrop ? 'ring-2 ring-yellow-400 rounded-lg' : 'rounded-lg'}>
+      {children}
+    </div>
+  );
+}
+
 export default function GamePage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
@@ -35,6 +49,7 @@ export default function GamePage() {
   } = useGameStore();
 
   const [handOrder, setHandOrder] = useState<string[]>([]);
+  const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!gameState) return;
@@ -50,9 +65,23 @@ export default function GamePage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
+  function handleDragStart(event: DragStartEvent) {
+    setDraggingCardId(event.active.id as string);
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setDraggingCardId(null);
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
+    if (!over) return;
+
+    if (over.id === OPEN_PILE_DROP_ID) {
+      const cardId = active.id as string;
+      const grouped = new Set(groups.flatMap(g => g.cards.map(c => c.id)));
+      if (discardMode && !grouped.has(cardId)) discard(cardId);
+      return;
+    }
+
+    if (active.id === over.id) return;
     setHandOrder(prev => {
       const oldIndex = prev.indexOf(active.id as string);
       const newIndex = prev.indexOf(over.id as string);
@@ -213,6 +242,7 @@ export default function GamePage() {
   }
 
   return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
     <div className="min-h-screen flex flex-col p-4 gap-3">
       {/* Leave game */}
       <div className="flex justify-end">
@@ -263,19 +293,21 @@ export default function GamePage() {
           <span className="text-xs text-green-400">Deck</span>
         </div>
         <div className="flex flex-col items-center gap-1">
-          {gameState.topOpenCard ? (
-            <button
-              disabled={!isMyTurn || !!drawnCard}
-              onClick={() => draw('open')}
-              className="disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <div className="hover:border-yellow-400 transition-colors rounded-lg">
-                <CardComponent card={gameState.topOpenCard} />
-              </div>
-            </button>
-          ) : (
-            <div className="w-16 h-24 rounded-lg border-2 border-dashed border-green-700" />
-          )}
+          <OpenPileDropZone canDrop={discardMode}>
+            {gameState.topOpenCard ? (
+              <button
+                disabled={!isMyTurn || !!drawnCard}
+                onClick={() => draw('open')}
+                className="disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <div className="hover:border-yellow-400 transition-colors rounded-lg">
+                  <CardComponent card={gameState.topOpenCard} />
+                </div>
+              </button>
+            ) : (
+              <div className="w-16 h-24 rounded-lg border-2 border-dashed border-green-700" />
+            )}
+          </OpenPileDropZone>
           <span className="text-xs text-green-400">Open Pile</span>
         </div>
       </div>
@@ -313,24 +345,22 @@ export default function GamePage() {
       {/* Hand — clicking always selects for grouping */}
       <div className="flex flex-col items-center gap-1">
         <p className="text-xs text-green-600">
-          Click to select • drag to rearrange
+          Click to select • drag to reorder or drop on open pile to discard
         </p>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={handOrder} strategy={horizontalListSortingStrategy}>
-            <div className="flex gap-1 flex-wrap justify-center">
-              {orderedHand.map(card => (
-                <SortableCard
-                  key={card.id}
-                  card={card}
-                  selected={selectedCards.includes(card.id)}
-                  onClick={() => toggleCardSelection(card.id)}
-                  groupLabel={cardGroupName.get(card.id)}
-                  isDrawnCard={drawnCard?.id === card.id}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <SortableContext items={handOrder} strategy={horizontalListSortingStrategy}>
+          <div className="flex gap-1 flex-wrap justify-center">
+            {orderedHand.map(card => (
+              <SortableCard
+                key={card.id}
+                card={card}
+                selected={selectedCards.includes(card.id)}
+                onClick={() => toggleCardSelection(card.id)}
+                groupLabel={cardGroupName.get(card.id)}
+                isDrawnCard={drawnCard?.id === card.id}
+              />
+            ))}
+          </div>
+        </SortableContext>
       </div>
 
       {/* Discard button — only when drawn a card */}
@@ -367,5 +397,15 @@ export default function GamePage() {
         showError={showError}
       />
     </div>
+    <DragOverlay dropAnimation={null}>
+      {draggingCardId ? (
+        <CardComponent
+          card={orderedHand.find(c => c.id === draggingCardId)!}
+          groupLabel={cardGroupName.get(draggingCardId)}
+          isDrawnCard={drawnCard?.id === draggingCardId}
+        />
+      ) : null}
+    </DragOverlay>
+    </DndContext>
   );
 }
